@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Tetris Demo</title>
+<style>
+  body { background: #222; color: #fff; font-family: sans-serif; text-align: center; }
+  #game { background: #111; display: inline-block; margin-top: 20px; }
+  #next { background: #333; margin-left: 20px; }
+  #score { margin-top: 10px; font-size: 20px; }
+  #message { position: absolute; left: 0; right: 0; top: 40%; font-size: 48px; color: yellow; display: none; }
+</style>
+</head>
+<body>
+<h1>簡単テトリス</h1>
+<canvas id="game" width="200" height="400"></canvas>
+<canvas id="next" width="80" height="80"></canvas>
+<div id="score">Score: 0</div>
+<div id="message">なはしょー!</div>
+<script>
+// サイズ定義
+const COLS = 10; // 横幅
+const ROWS = 20; // 縦幅
+const BLOCK = 20; // 1マスのピクセルサイズ
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.scale(BLOCK, BLOCK); // 1マスをBLOCKピクセルに拡大
+
+const nextCanvas = document.getElementById('next');
+const nextCtx = nextCanvas.getContext('2d');
+nextCtx.scale(BLOCK, BLOCK);
+
+const scoreEl = document.getElementById('score');
+const messageEl = document.getElementById('message');
+let score = 0;
+
+// 7種類のテトリミノ定義（回転パターン）
+const PIECES = {
+  'I': [[[0,1,0,0], [0,1,0,0], [0,1,0,0], [0,1,0,0]],
+        [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]]],
+  'J': [[[1,0,0], [1,1,1], [0,0,0]],
+        [[0,1,1], [0,1,0], [0,1,0]],
+        [[0,0,0], [1,1,1], [0,0,1]],
+        [[0,1,0], [0,1,0], [1,1,0]]],
+  'L': [[[0,0,1], [1,1,1], [0,0,0]],
+        [[0,1,0], [0,1,0], [0,1,1]],
+        [[0,0,0], [1,1,1], [1,0,0]],
+        [[1,1,0], [0,1,0], [0,1,0]]],
+  'O': [[[1,1], [1,1]]],
+  'S': [[[0,1,1], [1,1,0], [0,0,0]],
+        [[0,1,0], [0,1,1], [0,0,1]]],
+  'T': [[[0,1,0], [1,1,1], [0,0,0]],
+        [[0,1,0], [0,1,1], [0,1,0]],
+        [[0,0,0], [1,1,1], [0,1,0]],
+        [[0,1,0], [1,1,0], [0,1,0]]],
+  'Z': [[[1,1,0], [0,1,1], [0,0,0]],
+        [[0,0,1], [0,1,1], [0,1,0]]]
+};
+const COLORS = {
+  'I': '#0ff', 'J': '#00f', 'L': '#f80',
+  'O': '#ff0', 'S': '#0f0', 'T': '#f0f', 'Z': '#f00'
+};
+
+// 盤面配列作成（0で空）
+let board = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+
+// 現在のピース
+let current = null;
+let next = randomPiece();
+let dropInterval = 800; // 自動落下時間
+let lastTime = 0;
+let timer = null;
+
+function randomPiece() {
+  const keys = Object.keys(PIECES);
+  const type = keys[Math.floor(Math.random() * keys.length)];
+  const piece = {
+    type: type,
+    shape: PIECES[type],
+    rotation: 0,
+    x: 3,
+    y: 0
+  };
+  return piece;
+}
+
+function resetPiece() {
+  current = next;
+  current.x = 3;
+  current.y = 0;
+  next = randomPiece();
+  if (collide(board, current)) {
+    // 上端で衝突 = ゲームオーバー
+    alert('Game Over');
+    board = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+    score = 0;
+  }
+  drawNext();
+}
+
+function drawNext() {
+  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  const matrix = next.shape[0];
+  nextCtx.fillStyle = COLORS[next.type];
+  matrix.forEach((row, y) => {
+    row.forEach((val, x) => {
+      if (val) nextCtx.fillRect(x, y, 1, 1);
+    });
+  });
+}
+
+function draw() {
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, COLS, ROWS);
+  drawMatrix(board, {x:0, y:0});
+  drawMatrix(current.shape[current.rotation], current);
+}
+
+function drawMatrix(matrix, offset) {
+  matrix.forEach((row, y) => {
+    row.forEach((value, x) => {
+      if (value) {
+        ctx.fillStyle = COLORS[current.type] || '#fff';
+        ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
+      }
+    });
+  });
+}
+
+function merge(board, piece) {
+  piece.shape[piece.rotation].forEach((row, y) => {
+    row.forEach((val, x) => {
+      if (val) board[y + piece.y][x + piece.x] = piece.type;
+    });
+  });
+}
+
+function collide(board, piece) {
+  const m = piece.shape[piece.rotation];
+  for (let y=0; y<m.length; ++y) {
+    for (let x=0; x<m[y].length; ++x) {
+      if (m[y][x] && (board[y + piece.y] && board[y + piece.y][x + piece.x]) !== 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function playerDrop() {
+  current.y++;
+  if (collide(board, current)) {
+    current.y--;
+    merge(board, current);
+    sweep();
+    resetPiece();
+  }
+  draw();
+}
+
+function sweep() {
+  let lines = 0;
+  outer: for (let y = ROWS - 1; y >= 0; --y) {
+    for (let x = 0; x < COLS; ++x) {
+      if (!board[y][x]) continue outer;
+    }
+    const row = board.splice(y, 1)[0].fill(0); // 消す
+    board.unshift(row); // 上から詰める
+    ++y; // 同じ行を再度チェック
+    lines++;
+  }
+  if (lines > 0) {
+    score += lines * 10; // 1行につき10点
+    scoreEl.textContent = 'Score: ' + score;
+    showMessage();
+  }
+}
+
+function showMessage() {
+  messageEl.style.display = 'block';
+  setTimeout(() => messageEl.style.display = 'none', 500);
+}
+
+function update(time = 0) {
+  if (time - lastTime > dropInterval) {
+    playerDrop();
+    lastTime = time;
+  }
+  requestAnimationFrame(update);
+}
+
+// キー操作
+document.addEventListener('keydown', e => {
+  if (!current) return;
+  if (e.key === 'ArrowLeft') {
+    current.x--;
+    if (collide(board, current)) current.x++;
+  } else if (e.key === 'ArrowRight') {
+    current.x++;
+    if (collide(board, current)) current.x--;
+  } else if (e.key === 'ArrowDown') {
+    playerDrop();
+  } else if (e.key === 'ArrowUp') {
+    const prev = current.rotation;
+    current.rotation = (current.rotation + 1) % current.shape.length;
+    if (collide(board, current)) current.rotation = prev;
+  }
+  draw();
+});
+
+resetPiece();
+draw();
+update();
+</script>
+</body>
+</html>
